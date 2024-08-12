@@ -1,149 +1,125 @@
-import {
-  addDoc,
-  collection,
-  doc,
-  getDocs,
-  updateDoc,
-} from "firebase/firestore";
+import { addDoc, collection, getDocs } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
-import { db } from "../../firebaseConfig"; // Import your Firebase configuration
+import { db } from "../../firebaseConfig"; // Adjust the import according to your file structure
 
-interface CropItem {
+// Define interfaces for the data structures
+interface CropForSale {
   id: string;
-  farmerName: string;
-  cropName: string;
+  name: string;
   quantity: number;
-  farmerPrice: number;
-  traderPrice?: number; // Optional for storing trader price
-  forSale?: boolean; // Optional, indicates if the crop is for sale
+  price: number;
+}
+
+interface CropDemand {
+  id: string;
+  cropName: string;
+  price: number;
+  traderName: string;
+}
+
+interface CropOffer {
+  id: string;
+  cropName: string;
+  price: number;
+  traderName: string;
 }
 
 const TraderPage: React.FC = () => {
-  const [crops, setCrops] = useState<CropItem[]>([]);
-  const [cropsForSale, setCropsForSale] = useState<CropItem[]>([]);
-  const [newTraderPrice, setNewTraderPrice] = useState<{
-    cropId: string;
-    price: number;
-  }>({ cropId: "", price: 0 });
-  const [newInventoryItem, setNewInventoryItem] = useState({
+  const [cropsForSale, setCropsForSale] = useState<CropForSale[]>([]);
+  const [newDemand, setNewDemand] = useState<Omit<CropDemand, "id">>({
     cropName: "",
-    quantity: 0,
-    traderPrice: 0,
+    price: 0,
+    traderName: "Trader Name", // Ideally, this should be dynamic based on the logged-in trader
   });
-  const [editingItem, setEditingItem] = useState<CropItem | null>(null);
+  const [cropDemands, setCropDemands] = useState<CropDemand[]>([]);
+  const [newOffer, setNewOffer] = useState<Omit<CropOffer, "id">>({
+    cropName: "",
+    price: 0,
+    traderName: "Trader Name", // Ideally, this should be dynamic based on the logged-in trader
+  });
+  const [cropOffers, setCropOffers] = useState<CropOffer[]>([]);
 
   useEffect(() => {
-    const fetchCrops = async () => {
-      try {
-        const querySnapshot = await getDocs(collection(db, "crops"));
-        const cropData = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as CropItem[];
-        setCrops(cropData);
-
-        // Filter crops that are for sale
-        const saleCrops = cropData.filter((crop) => crop.forSale);
-        setCropsForSale(saleCrops);
-      } catch (error) {
-        console.error("Error fetching crops: ", error);
-      }
+    const fetchCropsForSale = async () => {
+      const querySnapshot = await getDocs(collection(db, "cropsForSale"));
+      const crops = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as CropForSale[];
+      setCropsForSale(crops);
     };
 
-    fetchCrops();
+    const fetchCropDemands = async () => {
+      const querySnapshot = await getDocs(collection(db, "cropDemands"));
+      const demands = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as CropDemand[];
+      setCropDemands(demands);
+    };
+
+    const fetchCropOffers = async () => {
+      const querySnapshot = await getDocs(collection(db, "cropOffers"));
+      const offers = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as CropOffer[];
+      setCropOffers(offers);
+    };
+
+    fetchCropsForSale();
+    fetchCropDemands();
+    fetchCropOffers();
   }, []);
 
-  const handleUpdatePrice = async (id: string, price: number) => {
-    const cropRef = doc(db, "crops", id);
-    await updateDoc(cropRef, { traderPrice: price });
-    setCrops(
-      crops.map((crop) =>
-        crop.id === id ? { ...crop, traderPrice: price } : crop
-      )
-    );
-  };
-
-  const handleAddTraderPrice = async () => {
-    if (newTraderPrice.cropId && newTraderPrice.price > 0) {
-      const crop = crops.find((crop) => crop.id === newTraderPrice.cropId);
-      if (crop) {
-        await updateDoc(doc(db, "crops", newTraderPrice.cropId), {
-          traderPrice: newTraderPrice.price,
-        });
-        setCrops(
-          crops.map((crop) =>
-            crop.id === newTraderPrice.cropId
-              ? { ...crop, traderPrice: newTraderPrice.price }
-              : crop
-          )
-        );
-        setNewTraderPrice({ cropId: "", price: 0 });
-      }
+  // Handle adding a new crop demand
+  const handleAddDemand = async () => {
+    if (newDemand.cropName && newDemand.price > 0) {
+      const docRef = await addDoc(collection(db, "cropDemands"), newDemand);
+      setCropDemands([...cropDemands, { id: docRef.id, ...newDemand }]);
+      setNewDemand({ cropName: "", price: 0, traderName: "Trader Name" });
     }
   };
 
-  const handleAddInventoryItem = async () => {
-    if (
-      newInventoryItem.cropName &&
-      newInventoryItem.quantity > 0 &&
-      newInventoryItem.traderPrice > 0
-    ) {
-      const docRef = await addDoc(collection(db, "crops"), {
-        farmerName: "Trader", // Assuming trader adds inventory under their name
-        cropName: newInventoryItem.cropName,
-        quantity: newInventoryItem.quantity,
-        traderPrice: newInventoryItem.traderPrice,
-        farmerPrice: 0, // Optional, depending on your data structure
-      });
-      setCrops([
-        ...crops,
-        {
-          id: docRef.id,
-          farmerName: "Trader",
-          cropName: newInventoryItem.cropName,
-          quantity: newInventoryItem.quantity,
-          traderPrice: newInventoryItem.traderPrice,
-          farmerPrice: 0,
-        },
-      ]);
-      setNewInventoryItem({ cropName: "", quantity: 0, traderPrice: 0 });
-    }
-  };
-
-  const handleEditItem = (item: CropItem) => {
-    setEditingItem(item);
-  };
-
-  const handleUpdateInventoryItem = async () => {
-    if (editingItem) {
-      const cropRef = doc(db, "crops", editingItem.id);
-      await updateDoc(cropRef, {
-        cropName: editingItem.cropName,
-        quantity: editingItem.quantity,
-        traderPrice: editingItem.traderPrice,
-      });
-      setCrops(
-        crops.map((crop) => (crop.id === editingItem.id ? editingItem : crop))
-      );
-      setEditingItem(null); // Reset editing state
+  // Handle adding a new crop offer
+  const handleAddOffer = async () => {
+    if (newOffer.cropName && newOffer.price > 0) {
+      const docRef = await addDoc(collection(db, "cropOffers"), newOffer);
+      setCropOffers([...cropOffers, { id: docRef.id, ...newOffer }]);
+      setNewOffer({ cropName: "", price: 0, traderName: "Trader Name" });
     }
   };
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      <h1 className="text-4xl font-extrabold text-gray-800 mb-6">
+    <div className="p-6 bg-gray-100 min-h-screen">
+      <h1 className="text-4xl font-extrabold text-gray-800 mb-10 text-center">
         Trader Dashboard
       </h1>
-      <p className="mb-8 text-gray-600">
-        Welcome, Trader! Review the crops available for purchase, manage your
-        inventory, and set your prices.
-      </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Manage Crops */}
-        <div className="bg-white shadow-lg rounded-lg p-6">
-          <h2 className="text-2xl font-semibold text-gray-800 mb-4">
-            Manage Inventory
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+        {/* Available Crops for Sale */}
+        <div>
+          <h2 className="text-2xl font-semibold text-gray-800 mb-6">
+            Available Crops for Sale
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {cropsForSale.map((crop) => (
+              <div
+                key={crop.id}
+                className="bg-white shadow-md rounded-lg p-6 space-y-2"
+              >
+                <h3 className="text-xl font-bold text-gray-700">{crop.name}</h3>
+                <p className="text-gray-600">Quantity: {crop.quantity}</p>
+                <p className="text-gray-600">Price: ${crop.price.toFixed(2)}</p>
+                {/* Add other functionalities like purchasing or negotiating here */}
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Add Crop Demand */}
+        <div className="bg-white shadow-lg rounded-xl p-8">
+          <h2 className="text-2xl font-semibold text-gray-800 mb-6">
+            Add Crop Demand
           </h2>
           <div className="space-y-4">
             <div>
@@ -153,178 +129,128 @@ const TraderPage: React.FC = () => {
               <input
                 type="text"
                 placeholder="Crop Name"
-                value={newInventoryItem.cropName}
+                value={newDemand.cropName}
                 onChange={(e) =>
-                  setNewInventoryItem({
-                    ...newInventoryItem,
-                    cropName: e.target.value,
-                  })
+                  setNewDemand({ ...newDemand, cropName: e.target.value })
                 }
                 className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
               <label className="block text-gray-700 font-semibold mb-2">
-                Quantity
+                Price
               </label>
               <input
                 type="number"
-                placeholder="Quantity"
-                value={newInventoryItem.quantity}
+                placeholder="Price"
+                value={newDemand.price}
                 onChange={(e) =>
-                  setNewInventoryItem({
-                    ...newInventoryItem,
-                    quantity: parseInt(e.target.value),
-                  })
-                }
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-gray-700 font-semibold mb-2">
-                Trader Price
-              </label>
-              <input
-                type="number"
-                placeholder="Trader Price"
-                value={newInventoryItem.traderPrice}
-                onChange={(e) =>
-                  setNewInventoryItem({
-                    ...newInventoryItem,
-                    traderPrice: parseFloat(e.target.value),
+                  setNewDemand({
+                    ...newDemand,
+                    price: parseFloat(e.target.value),
                   })
                 }
                 className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <button
-              onClick={handleAddInventoryItem}
+              onClick={handleAddDemand}
               className="w-full bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 transition"
             >
-              Add to Inventory
+              Add Demand
             </button>
           </div>
         </div>
-      </div>
-
-      {/* View and Update Inventory */}
-      <div className="mt-8 bg-white shadow-lg rounded-lg p-6">
-        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
-          View and Update Inventory
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {crops.map((crop) => (
-            <div
-              key={crop.id}
-              className="border border-gray-300 p-4 rounded-lg space-y-2"
-            >
-              <h3 className="text-lg font-bold text-gray-700">
-                {crop.cropName}
-              </h3>
-              <p className="text-gray-600">Quantity: {crop.quantity}</p>
-              <p className="text-gray-600">Trader Price: ${crop.traderPrice}</p>
-              <p className="text-gray-600">Farmer: {crop.farmerName}</p>
-              <button
-                onClick={() => handleEditItem(crop)}
-                className="mt-2 bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600 transition"
-              >
-                Edit
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Crops for Sale */}
-      <div className="mt-8 bg-white shadow-lg rounded-lg p-6">
-        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
-          Crops for Sale
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {cropsForSale.map((crop) => (
-            <div
-              key={crop.id}
-              className="border border-gray-300 p-4 rounded-lg space-y-2"
-            >
-              <h3 className="text-lg font-bold text-gray-700">
-                {crop.cropName}
-              </h3>
-              <p className="text-gray-600">Quantity: {crop.quantity}</p>
-              <p className="text-gray-600">Farmer Price: ${crop.farmerPrice}</p>
-              <p className="text-gray-600">Farmer: {crop.farmerName}</p>
-              {/* You can add buttons or other functionality here */}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Edit Item Modal */}
-      {editingItem && (
-        <div className="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-md space-y-4">
-            <h3 className="text-xl font-semibold text-gray-800">Edit Item</h3>
+        {/* Add Crop Offer */}
+        <div className="bg-white shadow-lg rounded-xl p-8">
+          <h2 className="text-2xl font-semibold text-gray-800 mb-6">
+            Add Crop Offer to Manufacturer
+          </h2>
+          <div className="space-y-4">
             <div>
               <label className="block text-gray-700 font-semibold mb-2">
                 Crop Name
               </label>
               <input
                 type="text"
-                value={editingItem.cropName}
+                placeholder="Crop Name"
+                value={newOffer.cropName}
                 onChange={(e) =>
-                  setEditingItem({ ...editingItem, cropName: e.target.value })
+                  setNewOffer({ ...newOffer, cropName: e.target.value })
                 }
                 className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
               <label className="block text-gray-700 font-semibold mb-2">
-                Quantity
+                Price
               </label>
               <input
                 type="number"
-                value={editingItem.quantity}
+                placeholder="Price"
+                value={newOffer.price}
                 onChange={(e) =>
-                  setEditingItem({
-                    ...editingItem,
-                    quantity: parseInt(e.target.value),
+                  setNewOffer({
+                    ...newOffer,
+                    price: parseFloat(e.target.value),
                   })
                 }
                 className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            <div>
-              <label className="block text-gray-700 font-semibold mb-2">
-                Trader Price
-              </label>
-              <input
-                type="number"
-                value={editingItem.traderPrice}
-                onChange={(e) =>
-                  setEditingItem({
-                    ...editingItem,
-                    traderPrice: parseFloat(e.target.value),
-                  })
-                }
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div className="flex justify-end space-x-2">
-              <button
-                onClick={() => setEditingItem(null)}
-                className="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUpdateInventoryItem}
-                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
-              >
-                Save
-              </button>
-            </div>
+            <button
+              onClick={handleAddOffer}
+              className="w-full bg-green-500 text-white p-3 rounded-lg hover:bg-green-600 transition"
+            >
+              Add Offer
+            </button>
           </div>
         </div>
-      )}
+        {/* Crop Demands */}
+        <div>
+          <h2 className="text-2xl font-semibold text-gray-800 mb-6">
+            Crop Demands
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {cropDemands.map((demand) => (
+              <div
+                key={demand.id}
+                className="bg-white shadow-md rounded-lg p-6 space-y-2"
+              >
+                <h3 className="text-xl font-bold text-gray-700">
+                  {demand.cropName}
+                </h3>
+                <p className="text-gray-600">
+                  Price: ${demand.price.toFixed(2)}
+                </p>
+                <p className="text-gray-600">Trader: {demand.traderName}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Crop Offers */} {/* Crop Offers */}
+        <div>
+          <h2 className="text-2xl font-semibold text-gray-800 mb-6">
+            Crop Offers
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {cropOffers.map((offer) => (
+              <div
+                key={offer.id}
+                className="bg-white shadow-md rounded-lg p-6 space-y-2"
+              >
+                <h3 className="text-xl font-bold text-gray-700">
+                  {offer.cropName}
+                </h3>
+                <p className="text-gray-600">
+                  Price: ${offer.price.toFixed(2)}
+                </p>
+                <p className="text-gray-600">Trader: {offer.traderName}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
